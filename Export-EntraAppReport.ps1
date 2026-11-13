@@ -8,8 +8,9 @@
 
       Apps.csv            one row per app      AppId (key), name, type, Microsoft/third-party flags,
                                                auth methods, counts, last sign-in dates, snapshot date
-      AppPermissions.csv  one row per app + application permission (all APIs, e.g. Microsoft Graph,
-                                               Office 365 Exchange Online, SharePoint)
+      AppPermissions.csv  one row per app + permission, all APIs (Microsoft Graph, Exchange Online, SharePoint...).
+                                               PermissionType = Application / Delegated / None. Apps with no
+                                               permissions get a single '(No permissions)' row
       AppCredentials.csv  one row per client secret / certificate / federated credential / managed identity,
                                                with start and end dates and status
       AppOwners.csv       one row per app + owner, plus a '(No owner)' row for apps without owners
@@ -173,7 +174,7 @@ Write-Host "Connected to tenant $($ctx.TenantId)" -ForegroundColor Cyan
 
 #region 1. Read service principals and app registrations ------------------------------------------
 Write-Host 'Reading enterprise apps (service principals)...' -ForegroundColor Cyan
-$spSelect = 'id,appId,displayName,servicePrincipalType,accountEnabled,appOwnerOrganizationId,publisherName,passwordCredentials,keyCredentials,appRoles'
+$spSelect = 'id,appId,displayName,servicePrincipalType,accountEnabled,appOwnerOrganizationId,publisherName,passwordCredentials,keyCredentials,appRoles,oauth2PermissionScopes'
 $allSps   = Invoke-GraphPaged -Uri "$GraphRoot/servicePrincipals?`$select=$spSelect&`$top=999"
 $spById   = @{}
 foreach ($s in $allSps) { $spById[[string]$s.id] = $s }
@@ -203,6 +204,26 @@ foreach ($sp in $sps) {
 }
 Write-Host "Reading permissions, owners and federated credentials ($($requests.Count) requests, batched)..." -ForegroundColor Cyan
 $batch = Invoke-GraphBatch -Requests $requests -Activity 'Reading permissions, owners and federated credentials'
+
+# Delegated permissions are stored as OAuth2 permission grants: one per app + API + (all users | one user).
+# Collapse them to one entry per app + API + scope + consent type, counting users for per-user consent.
+Write-Host 'Reading delegated permission grants...' -ForegroundColor Cyan
+$delegatedBySp = @{}   # spId -> ordered dictionary "resourceId|scope|consentType" -> entry
+foreach ($g in (Invoke-GraphPaged -Uri "$GraphRoot/oauth2PermissionGrants")) {
+    $clientId = [string]$g.clientId
+    $consent  = if ($g.consentType -eq 'AllPrincipals') { 'AllUsers' } else { 'User' }
+    foreach ($scope in @(([string](Get-Prop $g 'scope')) -split '\s+' | Where-Object { $_ })) {
+        if (-not $delegatedBySp.ContainsKey($clientId)) { $delegatedBySp[$clientId] = [ordered]@{} }
+        $key = "$($g.resourceId)|$scope|$consent"
+        if (-not $delegatedBySp[$clientId].Contains($key)) {
+            $delegatedBySp[$clientId][$key] = @{ ResourceId = [string]$g.resourceId; Scope = $scope; ConsentType = $consent; Users = 0 }
+        }
+        if ($consent -eq 'User') {
+            $entry = $delegatedBySp[$clientId][$key]
+            $entry['Users'] = $entry['Users'] + 1
+        }
+    }
+}
 #endregion
 
 #region 3. Last sign-in dates ---------------------------------------------------------------------
@@ -222,14 +243,15 @@ $appRows   = [System.Collections.Generic.List[object]]::new()
 $permRows  = [System.Collections.Generic.List[object]]::new()
 $credRows  = [System.Collections.Generic.List[object]]::new()
 $ownerRows = [System.Collections.Generic.List[object]]::new()
-$roleNameCache = @{}   # resourceId -> @{ roleId -> appRole }
+$roleNameCache  = @{}   # resourceId -> @{ roleId -> appRole }
+$scopeNameCache = @{}   # resourceId -> @{ scope value -> oauth2PermissionScope }
 
 foreach ($sp in $sps) {
     $appId       = [string]$sp.appId
     $app         = $appByAppId[$appId]
     $isMicrosoft = $sp.appOwnerOrganizationId -in $MicrosoftTenantIds
 
-    # ---- Permissions ----
+    # ---- Application permissions ----
     $permCount = 0
     $perms = $batch["perm|$($sp.id)"]
     foreach ($pa in @($perms)) {
@@ -244,12 +266,50 @@ foreach ($sp in $sps) {
         $permRows.Add([pscustomobject]@{
             AppId                 = $appId
             AppName               = $sp.displayName
+            PermissionType        = 'Application'
             Resource              = $pa.resourceDisplayName
             Permission            = if ($role) { $role.value } elseif ([string]$pa.appRoleId -eq '00000000-0000-0000-0000-000000000000') { '(default access)' } else { [string]$pa.appRoleId }
             PermissionDescription = if ($role) { $role.displayName } else { '' }
+            ConsentType           = 'Admin'
+            ConsentedUserCount    = ''
             GrantedDate           = Format-Date (Get-Prop $pa 'createdDateTime')
         })
         $permCount++
+    }
+
+    # ---- Delegated permissions ----
+    $delegatedScopes = @{}
+    if ($delegatedBySp.ContainsKey([string]$sp.id)) {
+        foreach ($d in @($delegatedBySp[[string]$sp.id].Values)) {
+            $resSp = $spById[$d.ResourceId]
+            if (-not $scopeNameCache.ContainsKey($d.ResourceId)) {
+                $map = @{}
+                foreach ($sc in @(Get-Prop $resSp 'oauth2PermissionScopes')) { if ($sc) { $map[[string]$sc.value] = $sc } }
+                $scopeNameCache[$d.ResourceId] = $map
+            }
+            $scopeObj = $scopeNameCache[$d.ResourceId][$d.Scope]
+            $permRows.Add([pscustomobject]@{
+                AppId                 = $appId
+                AppName               = $sp.displayName
+                PermissionType        = 'Delegated'
+                Resource              = if ($resSp) { $resSp.displayName } else { $d.ResourceId }
+                Permission            = $d.Scope
+                PermissionDescription = if ($scopeObj) { Get-Prop $scopeObj 'adminConsentDisplayName' } else { '' }
+                ConsentType           = $d.ConsentType
+                ConsentedUserCount    = if ($d.ConsentType -eq 'User') { $d.Users } else { '' }
+                GrantedDate           = ''   # Graph does not record when delegated grants were made
+            })
+            $delegatedScopes["$($d.ResourceId)|$($d.Scope)"] = $true
+        }
+    }
+    $delegatedCount = $delegatedScopes.Count
+
+    # Placeholder so every app appears in AppPermissions.csv and can be picked in a slicer
+    if ($permCount -eq 0 -and $delegatedCount -eq 0) {
+        $permRows.Add([pscustomobject]@{
+            AppId = $appId; AppName = $sp.displayName; PermissionType = 'None'; Resource = ''; Permission = '(No permissions)'
+            PermissionDescription = ''; ConsentType = ''; ConsentedUserCount = ''; GrantedDate = ''
+        })
     }
 
     # ---- Owners (app registration and enterprise app) ----
@@ -362,7 +422,8 @@ foreach ($sp in $sps) {
         AppCreated         = if ($app) { Format-Date (Get-Prop $app 'createdDateTime') } else { '' }
         AuthMethods        = $authMethods
         HasClientSecret    = $activeTypes.Contains('ClientSecret')
-        PermissionCount    = $permCount
+        ApplicationPermissionCount = $permCount
+        DelegatedPermissionCount   = $delegatedCount
         OwnerCount         = $ownerCount
         LastSignIn         = if ($si) { Format-Date (Get-Prop (Get-Prop $si 'lastSignInActivity') 'lastSignInDateTime') } else { '' }
         LastAppOnlySignIn  = if ($si) { Format-Date (Get-Prop (Get-Prop $si 'applicationAuthenticationClientSignInActivity') 'lastSignInDateTime') } else { '' }
@@ -376,9 +437,10 @@ New-Item -ItemType Directory -Path $OutputFolder -Force | Out-Null
 
 Export-Table -Rows ($appRows | Sort-Object AppName) -Path (Join-Path $OutputFolder 'Apps.csv') -Columns @(
     'AppId', 'ServicePrincipalId', 'AppName', 'AppType', 'IsMicrosoftApp', 'RegisteredInTenant', 'Publisher', 'Enabled',
-    'AppCreated', 'AuthMethods', 'HasClientSecret', 'PermissionCount', 'OwnerCount', 'LastSignIn', 'LastAppOnlySignIn', 'SnapshotDate')
-Export-Table -Rows ($permRows | Sort-Object AppName, Resource, Permission) -Path (Join-Path $OutputFolder 'AppPermissions.csv') -Columns @(
-    'AppId', 'AppName', 'Resource', 'Permission', 'PermissionDescription', 'GrantedDate')
+    'AppCreated', 'AuthMethods', 'HasClientSecret', 'ApplicationPermissionCount', 'DelegatedPermissionCount', 'OwnerCount',
+    'LastSignIn', 'LastAppOnlySignIn', 'SnapshotDate')
+Export-Table -Rows ($permRows | Sort-Object AppName, PermissionType, Resource, Permission) -Path (Join-Path $OutputFolder 'AppPermissions.csv') -Columns @(
+    'AppId', 'AppName', 'PermissionType', 'Resource', 'Permission', 'PermissionDescription', 'ConsentType', 'ConsentedUserCount', 'GrantedDate')
 Export-Table -Rows ($credRows | Sort-Object AppName, CredentialType, StartDate) -Path (Join-Path $OutputFolder 'AppCredentials.csv') -Columns @(
     'AppId', 'AppName', 'CredentialType', 'Source', 'Name', 'KeyId', 'Hint', 'Thumbprint', 'Issuer', 'Subject', 'StartDate', 'EndDate', 'Status')
 Export-Table -Rows ($ownerRows | Sort-Object AppName, OwnerName) -Path (Join-Path $OutputFolder 'AppOwners.csv') -Columns @(
@@ -387,7 +449,8 @@ Export-Table -Rows ($ownerRows | Sort-Object AppName, OwnerName) -Path (Join-Pat
 Write-Host ''
 Write-Host '================ Summary ================' -ForegroundColor Green
 Write-Host ("Apps                    : {0}" -f $appRows.Count)
-Write-Host ("Apps with permissions   : {0}" -f @($appRows | Where-Object { $_.PermissionCount -gt 0 }).Count)
+Write-Host ("Apps with app perms     : {0}" -f @($appRows | Where-Object { $_.ApplicationPermissionCount -gt 0 }).Count)
+Write-Host ("Apps with delegated     : {0}" -f @($appRows | Where-Object { $_.DelegatedPermissionCount -gt 0 }).Count)
 Write-Host ("Apps using client secret: {0}" -f @($appRows | Where-Object HasClientSecret).Count)
 Write-Host ("Permission rows         : {0}" -f $permRows.Count)
 Write-Host ("Credential rows         : {0}" -f $credRows.Count)
