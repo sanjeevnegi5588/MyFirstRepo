@@ -31,11 +31,16 @@ All four files share the `AppId` column.
 
 **Apps.csv**: one row per enterprise app
 
-`AppId, ServicePrincipalId, AppName, AppType, IsMicrosoftApp, RegisteredInTenant, Publisher, Enabled, AppCreated, AuthMethods, HasClientSecret, PermissionCount, OwnerCount, LastSignIn, LastAppOnlySignIn, SnapshotDate`
+`AppId, ServicePrincipalId, AppName, AppType, IsMicrosoftApp, RegisteredInTenant, Publisher, Enabled, AppCreated, AuthMethods, HasClientSecret, ApplicationPermissionCount, DelegatedPermissionCount, OwnerCount, LastSignIn, LastAppOnlySignIn, SnapshotDate`
 
-**AppPermissions.csv**: one row per app and application permission, for all APIs (Microsoft Graph, Exchange Online, SharePoint and others)
+**AppPermissions.csv**: one row per app and permission, for all APIs (Microsoft Graph, Exchange Online, SharePoint and others)
 
-`AppId, AppName, Resource, Permission, PermissionDescription, GrantedDate`
+`AppId, AppName, PermissionType, Resource, Permission, PermissionDescription, ConsentType, ConsentedUserCount, GrantedDate`
+
+- `PermissionType` is `Application`, `Delegated`, or `None`. Apps with no permissions at all get a single `(No permissions)` row, so every app appears in this file.
+- `ConsentType` is `Admin` for application permissions. For delegated permissions it is `AllUsers` (admin consent for the whole tenant) or `User` (individual users consented); for `User`, `ConsentedUserCount` shows how many users.
+- `GrantedDate` is filled only for application permissions, because Graph doesn't record when delegated permissions were granted.
+- Only granted permissions are included. Permissions requested in an app registration but never consented don't appear.
 
 **AppCredentials.csv**: one row per client secret, certificate, federated credential or managed identity
 
@@ -77,6 +82,8 @@ CALCULATE ( COUNTROWS ( AppCredentials ),
 ```
 
 Tip: filter the report on `IsMicrosoftApp = FALSE` by default to hide Microsoft's own built-in apps.
+
+Add a slicer on `AppPermissions[PermissionType]` to switch between application and delegated permissions. To count real permissions, exclude the placeholder rows, for example `CALCULATE ( COUNTROWS ( AppPermissions ), AppPermissions[PermissionType] <> "None" )`.
 
 ## Notes
 
