@@ -4,36 +4,50 @@ A PowerShell script that exports every Entra ID enterprise app to **four CSV fil
 
 ## Requirements
 
-- PowerShell 7+
-- `Install-Module Microsoft.Graph.Authentication -Scope CurrentUser`
-- Read-only Graph permissions: `Application.Read.All`, `Directory.Read.All`, `AuditLog.Read.All`
-- Last sign-in dates need Entra ID P1 or P2. Without it, those columns are left empty.
+The script runs in an Azure DevOps pipeline, following the same pattern as the team's other IAG scripts.
+
+- An **Azure PowerShell** task (PowerShell 7) signed in through a service connection. The script gets a Graph token from that context with `Get-AzAccessToken` and connects with `Connect-MgGraph -AccessToken`.
+- Graph **application** permissions on the service connection's identity, all read-only: `Application.Read.All`, `Directory.Read.All` and `AuditLog.Read.All`.
+- Last sign-in dates need Entra ID P1 or P2. Without it, those columns are left empty and a warning is logged.
+- These modules:
+  - `Exceptions` and `Logging` from the repo's `.\IAG\Generic\Modules` folder, which is added to `PSModulePath`.
+  - `Microsoft.Graph.Authentication`.
 
 ## Usage
 
-```powershell
-# Interactive sign-in; writes to .\EntraAppReport
-.\Export-EntraAppReport.ps1
+Run the script from the repository root, so that `.\IAG\Generic\Modules` resolves:
 
-# Write to a OneDrive/SharePoint-synced folder that Power BI reads from
-.\Export-EntraAppReport.ps1 -OutputFolder 'C:\Users\me\OneDrive - Contoso\EntraAppReport'
-
-# Unattended (app-only, certificate auth)
-Connect-MgGraph -TenantId <tenantId> -ClientId <appId> -CertificateThumbprint <thumbprint> -NoWelcome
-.\Export-EntraAppReport.ps1 -SkipConnect -OutputFolder D:\Reports\EntraAppReport
+```yaml
+- task: AzurePowerShell@5
+  inputs:
+    azureSubscription: '<service connection>'
+    ScriptPath: 'Export-EntraAppReport.ps1'
+    azurePowerShellVersion: LatestVersion
+    pwsh: true
 ```
 
-The file names are fixed and overwritten on every run, so Power BI refresh keeps working.
+The four CSV files are written to `$(Build.SourcesDirectory)` with the build ID in the name. Their paths are set as pipeline variables for later steps, for example to upload them to the SharePoint folder that Power BI reads:
+
+| File | Pipeline variable |
+|---|---|
+| `EntraApp_Apps<BuildId>.csv` | `$(appscsvpath)` |
+| `EntraApp_Permissions<BuildId>.csv` | `$(permissionscsvpath)` |
+| `EntraApp_Credentials<BuildId>.csv` | `$(credentialscsvpath)` |
+| `EntraApp_Owners<BuildId>.csv` | `$(ownerscsvpath)` |
+
+Power BI refresh needs the same file names on every run. When uploading, save the files under fixed names: `Apps.csv`, `AppPermissions.csv`, `AppCredentials.csv` and `AppOwners.csv`.
+
+Logging uses the `AzureDevOpsConsole` target. It logs at INFO level on `master` and at DEBUG level on other branches.
 
 ## Output files
 
 All four files share the `AppId` column.
 
-**Apps.csv**: one row per enterprise app
+**Apps.csv** (`EntraApp_Apps<BuildId>.csv`): one row per enterprise app
 
 `AppId, ServicePrincipalId, AppName, AppType, IsMicrosoftApp, RegisteredInTenant, Publisher, Enabled, AppCreated, AuthMethods, HasClientSecret, ApplicationPermissionCount, DelegatedPermissionCount, OwnerCount, LastSignIn, LastAppOnlySignIn, SnapshotDate`
 
-**AppPermissions.csv**: one row per app and permission, for all APIs (Microsoft Graph, Exchange Online, SharePoint and others)
+**AppPermissions.csv** (`EntraApp_Permissions<BuildId>.csv`): one row per app and permission, for all APIs (Microsoft Graph, Exchange Online, SharePoint and others)
 
 `AppId, AppName, PermissionType, Resource, Permission, PermissionDescription, ConsentType, ConsentedUserCount, GrantedDate`
 
@@ -42,7 +56,7 @@ All four files share the `AppId` column.
 - `GrantedDate` is filled only for application permissions, because Graph doesn't record when delegated permissions were granted.
 - Only granted permissions are included. Permissions requested in an app registration but never consented don't appear.
 
-**AppCredentials.csv**: one row per client secret, certificate, federated credential or managed identity
+**AppCredentials.csv** (`EntraApp_Credentials<BuildId>.csv`): one row per client secret, certificate, federated credential or managed identity
 
 `AppId, AppName, CredentialType, Source, Name, KeyId, Hint, Thumbprint, Issuer, Subject, StartDate, EndDate, Status`
 
@@ -50,14 +64,14 @@ All four files share the `AppId` column.
 - `Status` is `Active`, `Expired` or `NotYetValid`.
 - SAML token-signing certificates are excluded because they don't authenticate the app.
 
-**AppOwners.csv**: one row per app and owner
+**AppOwners.csv** (`EntraApp_Owners<BuildId>.csv`): one row per app and owner
 
 `AppId, AppName, OwnerOf, OwnerName, OwnerUPN, OwnerType, OwnerId`
 
 - `OwnerOf` is `AppRegistration` or `EnterpriseApp`.
 - Apps without owners get a single `(No owner)` row, so you can select them in a slicer.
 
-Dates are written as `yyyy-MM-dd`.
+Dates are written as `yyyy-MM-dd`. Files are UTF-16 (`-Encoding unicode`), the same as the MFA report; Power BI reads them without changes.
 
 ## Power BI setup
 
