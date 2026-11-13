@@ -1,57 +1,84 @@
-# Export-CriticalGraphApps.ps1
+# Export-EntraAppReport.ps1
 
-A PowerShell script that exports Entra ID enterprise apps holding **critical or high-risk Microsoft Graph application permissions** to a single CSV file. For each app it shows the owners, the permissions, which auth methods the app uses, the age and expiry of every credential, and the app's last sign-in date.
+A PowerShell script that exports every Entra ID enterprise app to **four CSV files** for a Power BI report. The files cover the apps, the application permissions on them, the auth methods (credentials) they use, their owners, and their last sign-in dates.
 
 ## Requirements
 
 - PowerShell 7+
 - `Install-Module Microsoft.Graph.Authentication -Scope CurrentUser`
 - Read-only Graph permissions: `Application.Read.All`, `Directory.Read.All`, `AuditLog.Read.All`
-- The last sign-in date needs Entra ID P1 or P2. Without it, the column shows `Unavailable` and the rest of the report still works.
+- Last sign-in dates need Entra ID P1 or P2. Without it, those columns are left empty.
 
 ## Usage
 
 ```powershell
-# Interactive sign-in
-.\Export-CriticalGraphApps.ps1
+# Interactive sign-in; writes to .\EntraAppReport
+.\Export-EntraAppReport.ps1
 
-# Choose where the file goes
-.\Export-CriticalGraphApps.ps1 -OutputPath C:\Reports\GraphApps.csv
+# Write to a OneDrive/SharePoint-synced folder that Power BI reads from
+.\Export-EntraAppReport.ps1 -OutputFolder 'C:\Users\me\OneDrive - Contoso\EntraAppReport'
 
 # Unattended (app-only, certificate auth)
 Connect-MgGraph -TenantId <tenantId> -ClientId <appId> -CertificateThumbprint <thumbprint> -NoWelcome
-.\Export-CriticalGraphApps.ps1 -SkipConnect
+.\Export-EntraAppReport.ps1 -SkipConnect -OutputFolder D:\Reports\EntraAppReport
 ```
 
-Optional:
-- `-AdditionalCriticalPermissions 'AuditLog.Read.All','Reports.Read.All'` treats extra permissions as critical.
-- `-IncludeNonCritical` exports every app with any Graph application permission.
+The file names are fixed and overwritten on every run, so Power BI refresh keeps working.
 
-## Output
+## Output files
 
-One CSV with one row per app, sorted by risk:
+All four files share the `AppId` column.
 
-| Column | Example |
-|---|---|
-| RiskRating | `Critical` |
-| AppName | `Legacy-UserProvisioning` |
-| AppId | `1a2b3c4d-...` |
-| Owners | `it-admin@example.com; jane@example.com` (or `No owners`) |
-| CriticalPermissions | `Group.ReadWrite.All; User.ReadWrite.All` |
-| HighPermissions | `Mail.Read` |
-| AuthMethods | `ClientSecret, Certificate` |
-| CredentialAges | `ClientSecret 'prod-2024': 742 days old, expires 2026-12-01 (17 days left) \| Certificate 'backup-cert': 120 days old, expires 2027-07-15 (243 days left)` |
-| LastSignIn | `2026-11-12` |
+**Apps.csv**: one row per enterprise app
 
-**RiskRating**
-- **Critical**: a critical permission **and** an active client secret.
-- **High**: a critical permission, or a high-risk permission plus a client secret.
-- **Medium**: a high-risk permission only.
+`AppId, ServicePrincipalId, AppName, AppType, IsMicrosoftApp, RegisteredInTenant, Publisher, Enabled, AppCreated, AuthMethods, HasClientSecret, PermissionCount, OwnerCount, LastSignIn, LastAppOnlySignIn, SnapshotDate`
 
-**CredentialAges** lists every client secret, certificate and federated credential, oldest first, including expired ones (marked `EXPIRED`). A credential stored on the enterprise app instead of the app registration is marked `[on enterprise app]`, because it doesn't appear in the App registrations blade.
+**AppPermissions.csv**: one row per app and application permission, for all APIs (Microsoft Graph, Exchange Online, SharePoint and others)
+
+`AppId, AppName, Resource, Permission, PermissionDescription, GrantedDate`
+
+**AppCredentials.csv**: one row per client secret, certificate, federated credential or managed identity
+
+`AppId, AppName, CredentialType, Source, Name, KeyId, Hint, Thumbprint, Issuer, Subject, StartDate, EndDate, Status`
+
+- `Source` is `AppRegistration` or `EnterpriseApp`. Secrets on the enterprise app don't appear in the App registrations blade.
+- `Status` is `Active`, `Expired` or `NotYetValid`.
+- SAML token-signing certificates are excluded because they don't authenticate the app.
+
+**AppOwners.csv**: one row per app and owner
+
+`AppId, AppName, OwnerOf, OwnerName, OwnerUPN, OwnerType, OwnerId`
+
+- `OwnerOf` is `AppRegistration` or `EnterpriseApp`.
+- Apps without owners get a single `(No owner)` row, so you can select them in a slicer.
+
+Dates are written as `yyyy-MM-dd`.
+
+## Power BI setup
+
+1. **Get Data.** Load the four CSVs, using the Folder or SharePoint folder connector.
+2. **Model view.** Create a relationship from `Apps[AppId]` to `AppId` in each of the other three tables, one-to-many, with cross-filter direction set to **Both**. Slicers on Permission or Owner then filter the app list.
+3. **Measures.** Calculate ages in Power BI so they stay current, for example:
+
+```DAX
+Permissions = CONCATENATEX ( VALUES ( AppPermissions[Permission] ), AppPermissions[Permission], "; " )
+Owners      = CONCATENATEX ( VALUES ( AppOwners[OwnerName] ), AppOwners[OwnerName], "; " )
+
+Oldest Active Secret (days) =
+VAR firstStart =
+    CALCULATE ( MIN ( AppCredentials[StartDate] ),
+        AppCredentials[CredentialType] = "ClientSecret", AppCredentials[Status] = "Active" )
+RETURN IF ( NOT ISBLANK ( firstStart ), DATEDIFF ( firstStart, TODAY (), DAY ) )
+
+Secrets Expiring 30d =
+CALCULATE ( COUNTROWS ( AppCredentials ),
+    AppCredentials[CredentialType] = "ClientSecret",
+    AppCredentials[EndDate] >= TODAY (), AppCredentials[EndDate] <= TODAY () + 30 )
+```
+
+Tip: filter the report on `IsMicrosoftApp = FALSE` by default to hide Microsoft's own built-in apps.
 
 ## Notes
 
-- The critical and high permission lists are in the `$PermissionTiers` hashtable at the top of the script. Edit them to fit your own risk model.
-- SAML token-signing certificates are excluded because they aren't used to authenticate the app.
-- Third-party or multi-tenant apps registered in another tenant show `Unknown (app registered in another tenant)`, because their credentials can't be seen from your tenant.
+- `AuthMethods` in Apps.csv lists the methods with at least one non-expired credential. For apps registered in another tenant (third-party or multi-tenant apps), credentials can't be seen from your tenant, so it shows `Unknown (registered in another tenant)`.
+- Permissions, owners and federated credentials are read with Graph JSON batching, 20 requests per call. A tenant with a few thousand apps should take a few minutes.
