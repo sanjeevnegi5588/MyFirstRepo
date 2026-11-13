@@ -30,11 +30,11 @@
     Use an existing Connect-MgGraph session (e.g. app-only with a certificate for scheduled runs).
 
 .EXAMPLE
-    .\Export-CriticalGraphApps.ps1 -OutputFolder 'C:\Users\me\OneDrive - Contoso\EntraAppReport'
+    .\Export-EntraAppReport.ps1 -OutputFolder 'C:\Users\me\OneDrive - Contoso\EntraAppReport'
 
 .EXAMPLE
     Connect-MgGraph -TenantId <tenant> -ClientId <appId> -CertificateThumbprint <thumb> -NoWelcome
-    .\Export-CriticalGraphApps.ps1 -SkipConnect -OutputFolder D:\Reports\EntraAppReport
+    .\Export-EntraAppReport.ps1 -SkipConnect -OutputFolder D:\Reports\EntraAppReport
 
 .NOTES
     Requires PowerShell 7+ and: Install-Module Microsoft.Graph.Authentication -Scope CurrentUser

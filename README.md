@@ -1,4 +1,4 @@
-# Export-CriticalGraphApps.ps1
+# Export-EntraAppReport.ps1
 
 A PowerShell script that exports every Entra ID enterprise app to **four CSV files** for a Power BI report. The files cover the apps, the application permissions on them, the auth methods (credentials) they use, their owners, and their last sign-in dates.
 
@@ -13,14 +13,14 @@ A PowerShell script that exports every Entra ID enterprise app to **four CSV fil
 
 ```powershell
 # Interactive sign-in; writes to .\EntraAppReport
-.\Export-CriticalGraphApps.ps1
+.\Export-EntraAppReport.ps1
 
 # Write to a OneDrive/SharePoint-synced folder that Power BI reads from
-.\Export-CriticalGraphApps.ps1 -OutputFolder 'C:\Users\me\OneDrive - Contoso\EntraAppReport'
+.\Export-EntraAppReport.ps1 -OutputFolder 'C:\Users\me\OneDrive - Contoso\EntraAppReport'
 
 # Unattended (app-only, certificate auth)
 Connect-MgGraph -TenantId <tenantId> -ClientId <appId> -CertificateThumbprint <thumbprint> -NoWelcome
-.\Export-CriticalGraphApps.ps1 -SkipConnect -OutputFolder D:\Reports\EntraAppReport
+.\Export-EntraAppReport.ps1 -SkipConnect -OutputFolder D:\Reports\EntraAppReport
 ```
 
 The file names are fixed and overwritten on every run, so Power BI refresh keeps working.
