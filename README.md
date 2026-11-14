@@ -75,29 +75,7 @@ Dates are written as `yyyy-MM-dd`. Files are UTF-16 (`-Encoding unicode`), the s
 
 ## Power BI setup
 
-1. **Get Data.** Load the four CSVs, using the Folder or SharePoint folder connector.
-2. **Model view.** Create a relationship from `Apps[AppId]` to `AppId` in each of the other three tables, one-to-many, with cross-filter direction set to **Both**. Slicers on Permission or Owner then filter the app list.
-3. **Measures.** Calculate ages in Power BI so they stay current, for example:
-
-```DAX
-Permissions = CONCATENATEX ( VALUES ( AppPermissions[Permission] ), AppPermissions[Permission], "; " )
-Owners      = CONCATENATEX ( VALUES ( AppOwners[OwnerName] ), AppOwners[OwnerName], "; " )
-
-Oldest Active Secret (days) =
-VAR firstStart =
-    CALCULATE ( MIN ( AppCredentials[StartDate] ),
-        AppCredentials[CredentialType] = "ClientSecret", AppCredentials[Status] = "Active" )
-RETURN IF ( NOT ISBLANK ( firstStart ), DATEDIFF ( firstStart, TODAY (), DAY ) )
-
-Secrets Expiring 30d =
-CALCULATE ( COUNTROWS ( AppCredentials ),
-    AppCredentials[CredentialType] = "ClientSecret",
-    AppCredentials[EndDate] >= TODAY (), AppCredentials[EndDate] <= TODAY () + 30 )
-```
-
-Tip: filter the report on `IsMicrosoftApp = FALSE` by default to hide Microsoft's own built-in apps.
-
-Add a slicer on `AppPermissions[PermissionType]` to switch between application and delegated permissions. To count real permissions, exclude the placeholder rows, for example `CALCULATE ( COUNTROWS ( AppPermissions ), AppPermissions[PermissionType] <> "None" )`.
+See **[PowerBI-Setup.md](PowerBI-Setup.md)** for the full step-by-step guide. It covers the Power Query code to load the four files, the data model relationships, the calculated columns and DAX measures, the report pages, and how to switch the source to SharePoint.
 
 ## Notes
 
