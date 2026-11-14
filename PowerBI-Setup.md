@@ -228,6 +228,12 @@ CALCULATE (
 ```
 
 ```DAX
+Days to Next Expiry =
+VAR d = [Next Credential Expiry]
+RETURN IF ( NOT ISBLANK ( d ), INT ( d - TODAY () ) )
+```
+
+```DAX
 Days Since Last Sign-in =
 VAR d = MAX ( Apps[LastSignIn] )
 RETURN IF ( NOT ISBLANK ( d ), INT ( TODAY () - d ) )
@@ -261,7 +267,7 @@ In the Filters pane, under **Filters on all pages**, add `Apps[IsMicrosoftApp]` 
 - **Keep `AppId` in the table.** Without it, two apps with the same name merge into one row. You can make the column narrow.
 - **Conditional formatting** (column → Conditional formatting → Background colour → Rules):
   - `Oldest Active Secret (days)`: red over 365, amber 181–365.
-  - `Next Credential Expiry`: red when within 30 days of today.
+  - `Next Credential Expiry`: Power BI can't apply rules to a date directly. Choose **Format style: Rules**, set **What field should we base this on?** to `Days to Next Expiry`, and add a rule: 0 to 30 → red.
 - **Find apps with no owner:** select `(No owner)` in the Owner slicer. Selecting `(No permissions)` in the Permission slicer works the same way.
 
 ### Page 3: Credentials
