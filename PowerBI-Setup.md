@@ -128,20 +128,22 @@ Create a table to hold the measures: **Home → Enter data**, leave it empty, na
 
 ### Counts (for cards)
 
+The first measure is called `App Count`, not `Apps`. A measure with the same name as the `Apps` table makes `Apps[AppId]` ambiguous, and the formula shows an error.
+
 ```DAX
-Apps = DISTINCTCOUNT ( Apps[AppId] )
+App Count = DISTINCTCOUNT ( Apps[AppId] )
 ```
 
 ```DAX
-Apps with Client Secret = CALCULATE ( [Apps], Apps[HasClientSecret] = TRUE () )
+Apps with Client Secret = CALCULATE ( [App Count], Apps[HasClientSecret] = TRUE () )
 ```
 
 ```DAX
-Apps without Owner = CALCULATE ( [Apps], Apps[OwnerCount] = 0 )
+Apps without Owner = CALCULATE ( [App Count], Apps[OwnerCount] = 0 )
 ```
 
 ```DAX
-Apps with Application Permissions = CALCULATE ( [Apps], Apps[ApplicationPermissionCount] > 0 )
+Apps with Application Permissions = CALCULATE ( [App Count], Apps[ApplicationPermissionCount] > 0 )
 ```
 
 ```DAX
@@ -243,11 +245,11 @@ In the Filters pane, under **Filters on all pages**, add `Apps[IsMicrosoftApp]` 
 
 | Visual | Fields |
 |---|---|
-| 6 cards | `Apps`, `Apps with Client Secret`, `Apps without Owner`, `Secrets Older Than 1 Year`, `Credentials Expiring in 30 Days`, `Expired Credentials` |
-| Bar chart: auth methods | Y: `AppCredentials[CredentialType]`, X: `Apps` |
-| Bar chart: top permissions | Y: `AppPermissions[Permission]`, X: `Apps`. Visual filters: `PermissionType = Application`, and Top N = 15 by `Apps` |
+| 6 cards | `App Count`, `Apps with Client Secret`, `Apps without Owner`, `Secrets Older Than 1 Year`, `Credentials Expiring in 30 Days`, `Expired Credentials` |
+| Bar chart: auth methods | Y: `AppCredentials[CredentialType]`, X: `App Count` |
+| Bar chart: top permissions | Y: `AppPermissions[Permission]`, X: `App Count`. Visual filters: `PermissionType = Application`, and Top N = 15 by `App Count` |
 | Bar chart: credential expiry | Y: `AppCredentials[Expiry Status]`, X: count of `AppCredentials[KeyId]` |
-| Donut: sign-in activity | Legend: `Apps[Sign-in Status]`, Values: `Apps` |
+| Donut: sign-in activity | Legend: `Apps[Sign-in Status]`, Values: `App Count` |
 
 ### Page 2: App Inventory (main page for filtering)
 
@@ -275,7 +277,7 @@ Sort by `Days to Expiry` ascending to see the most urgent credentials first. `So
 
 | Visual | Fields |
 |---|---|
-| Bar chart: apps per owner | Y: `AppOwners[OwnerName]`, X: `Apps`, sorted descending |
+| Bar chart: apps per owner | Y: `AppOwners[OwnerName]`, X: `App Count`, sorted descending |
 | Table | `AppOwners[OwnerName]`, `AppOwners[OwnerUPN]`, `AppOwners[OwnerOf]`, `Apps[AppName]`, `Apps[AuthMethods]` |
 
 ### Page 5: App Detail (drill-through)
@@ -330,4 +332,5 @@ For local or OneDrive-synced files, scheduled refresh in the Service needs an on
 | A Permission or Owner slicer doesn't filter the app table | That relationship's cross-filter direction isn't **Both** (step 4). |
 | Two apps appear as one row | `Apps[AppId]` is missing from the table visual. |
 | `LastSignIn` is empty for every app | The export had no sign-in data (needs Entra ID P1/P2 and `AuditLog.Read.All`). `Sign-in Status` then shows "No sign-in recorded" for all apps. |
+| A measure's formula is underlined in red at `Apps[...]` | The measure has the same name as the `Apps` table. Rename it to `App Count` and update the measures that refer to it. |
 | Ages or expiry status look a day out of date | Calculated columns update on refresh. Refresh the report. |
