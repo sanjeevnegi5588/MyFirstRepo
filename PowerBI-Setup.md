@@ -11,7 +11,7 @@ Step-by-step instructions for building the Power BI report from the four CSV fil
 
 The four files are linked by the `AppId` column.
 
-These steps assume the files are in a local or OneDrive folder for now. Moving to SharePoint later only changes one query ([step 8](#8-switch-to-sharepoint-later)).
+These steps assume the files are in a local or OneDrive folder for now. Moving to SharePoint later only changes one query ([step 8](#8-refreshing-and-switching-to-sharepoint-later)).
 
 ---
 
@@ -33,21 +33,34 @@ Go to **Home → New Source → Blank Query → Advanced Editor**, paste the cod
 ```m
 (FileName as text) as table =>
 let
-    Content  = Files{[Name = FileName]}[Content],
-    // 1200 = UTF-16, which is what the script writes (-Encoding unicode)
-    Csv      = Csv.Document(Content, [Delimiter = ",", Encoding = 1200, QuoteStyle = QuoteStyle.Csv]),
-    Promoted = Table.PromoteHeaders(Csv, [PromoteAllScalars = true]),
+    Content    = Files{[Name = FileName]}[Content],
+    // UTF-16 files (pipeline version, -Encoding unicode) start with bytes FF FE; anything else is read as UTF-8
+    FirstTwo   = Binary.ToList(Binary.Range(Content, 0, 2)),
+    Encoding   = if FirstTwo = {255, 254} then 1200 else 65001,
+    Csv        = Csv.Document(Content, [Delimiter = ",", Encoding = Encoding, QuoteStyle = QuoteStyle.Csv]),
+    Promoted   = Table.PromoteHeaders(Csv, [PromoteAllScalars = true]),
+    // Remove any stray byte-order mark or spaces from the column names
+    CleanNames = Table.TransformColumnNames(Promoted, each Text.Trim(Text.Replace(_, Character.FromNumber(65279), ""))),
     // Empty cells -> null, so date and number columns convert cleanly
-    Cleaned  = Table.ReplaceValue(Promoted, "", null, Replacer.ReplaceValue, Table.ColumnNames(Promoted))
+    Cleaned    = Table.ReplaceValue(CleanNames, "", null, Replacer.ReplaceValue, Table.ColumnNames(CleanNames))
 in
     Cleaned
 ```
+
+The function detects each file's encoding, so it reads both kinds of export without changes:
+
+| Export | File names | Encoding |
+|---|---|---|
+| Pipeline version of the script | `EntraApp_Apps.csv`, `EntraApp_Permissions.csv`, ... | UTF-16 |
+| Earlier local version of the script | `Apps.csv`, `AppPermissions.csv`, ... | UTF-8 |
 
 ---
 
 ## 3. Create the four tables
 
 Create four more blank queries, one for each table. Give each the name shown, because the DAX in later steps uses these names.
+
+The file names below (`Apps.csv` and so on) match the local export. For the pipeline files in SharePoint, use the names in [step 8](#8-refreshing-and-switching-to-sharepoint-later).
 
 ### `Apps`
 ```m
@@ -107,7 +120,7 @@ Click `Apps` and look at the preview:
 | You see | What to do |
 |---|---|
 | Proper column names and readable text | Nothing. Continue. |
-| Garbled text, or everything in one column | The files aren't UTF-16. In `fnReadCsv`, change `Encoding = 1200` to `Encoding = 65001`. |
+| Garbled text, or everything in one column | The encoding wasn't detected correctly. Check that `fnReadCsv` matches step 2 exactly. |
 | An error in a date or number column | Check what the cell contains in the CSV. The type list may need adjusting for that column. |
 
 Your query list should look like this, with only the last four loading into the report:
@@ -415,7 +428,8 @@ For local or OneDrive-synced files, scheduled refresh in the Service needs an on
 | Problem | Likely cause and fix |
 |---|---|
 | `Expression.Error: The key didn't match any rows in the table` | A file name in one of the four queries doesn't match the file in the folder. Check spelling and the `.csv` extension. |
-| Text is garbled or all in one column | Wrong encoding. Change `Encoding = 1200` to `65001` in `fnReadCsv`. |
+| `Expression.Error: The column 'AppId' of the table wasn't found` in every table | The header row was read with the wrong encoding, which happened with an earlier version of `fnReadCsv` that assumed UTF-16. Replace `fnReadCsv` with the version in step 2. To check, open a table query and click its **Source** step: the column names should read `AppId`, `AppName` and so on. |
+| Text is garbled or all in one column | Same cause: replace `fnReadCsv` with the version in step 2. |
 | A Permission or Owner slicer doesn't filter the app table | That relationship's cross-filter direction isn't **Both** (step 4). |
 | Two apps appear as one row | `Apps[AppId]` is missing from the table visual. |
 | `LastSignIn` is empty for every app | The export had no sign-in data (needs Entra ID P1/P2 and `AuditLog.Read.All`). `Sign-in Status` then shows "No sign-in recorded" for all apps. |
