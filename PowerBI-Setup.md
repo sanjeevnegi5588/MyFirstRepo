@@ -11,6 +11,8 @@ Step-by-step instructions for building the Power BI report from the four CSV fil
 
 The four files are linked by the `AppId` column.
 
+> **Use [powerbi/README.md](powerbi/README.md) for loading the data.** It replaces steps 1–3 below with parameter-driven queries (local folder or SharePoint, no per-table edits) and covers the load errors found while building the report. Steps 4–7 (model, calculated columns, measures, pages) still apply.
+
 These steps assume the files are in a local or OneDrive folder for now. Moving to SharePoint later only changes one query ([step 8](#8-refreshing-and-switching-to-sharepoint-later)).
 
 ---
