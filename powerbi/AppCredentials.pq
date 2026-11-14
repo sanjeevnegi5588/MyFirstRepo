@@ -1,5 +1,7 @@
 let
-    Content    = Files{[Name = "AppCredentials.csv"]}[Content],
+    // Folder that holds the four CSV files - change this to your folder
+    FolderPath = "C:\Path\To\EntraAppReport",
+    Content    = File.Contents(FolderPath & "\AppCredentials.csv"),
     FirstTwo   = Binary.ToList(Binary.Range(Content, 0, 2)),
     Encoding   = if FirstTwo = {255, 254} then 1200 else 65001,
     Csv        = Csv.Document(Content, [Delimiter = ",", Encoding = Encoding, QuoteStyle = QuoteStyle.Csv]),
