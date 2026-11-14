@@ -177,54 +177,70 @@ CALCULATE (
 
 ### Per-app values (for the main table)
 
-These show an app's **full** list even when a Permission or Owner slicer is active, because `REMOVEFILTERS` ignores the slicer for that cell. The slicer still decides which apps appear.
+These show an app's **full** list even when a Permission or Owner slicer is active. Each one first remembers the row's app (`CurrentApps`), removes the slicer's filter on the child table, then reapplies the app with `TREATAS`. The slicer still decides which apps appear.
+
+Don't use `REMOVEFILTERS ( <child table> )` on its own: it also removes the filter on the related `Apps` table, so every row shows every app's values.
 
 ```DAX
 Application Permissions =
-CALCULATE (
-    CONCATENATEX ( VALUES ( AppPermissions[Permission] ), AppPermissions[Permission], "; ", AppPermissions[Permission], ASC ),
-    REMOVEFILTERS ( AppPermissions ),
-    AppPermissions[PermissionType] = "Application"
-)
+VAR CurrentApps = VALUES ( Apps[AppId] )
+RETURN
+    CALCULATE (
+        CONCATENATEX ( VALUES ( AppPermissions[Permission] ), AppPermissions[Permission], "; ", AppPermissions[Permission], ASC ),
+        REMOVEFILTERS ( AppPermissions ),
+        TREATAS ( CurrentApps, AppPermissions[AppId] ),
+        AppPermissions[PermissionType] = "Application"
+    )
 ```
 
 ```DAX
 Delegated Permissions =
-CALCULATE (
-    CONCATENATEX ( VALUES ( AppPermissions[Permission] ), AppPermissions[Permission], "; ", AppPermissions[Permission], ASC ),
-    REMOVEFILTERS ( AppPermissions ),
-    AppPermissions[PermissionType] = "Delegated"
-)
+VAR CurrentApps = VALUES ( Apps[AppId] )
+RETURN
+    CALCULATE (
+        CONCATENATEX ( VALUES ( AppPermissions[Permission] ), AppPermissions[Permission], "; ", AppPermissions[Permission], ASC ),
+        REMOVEFILTERS ( AppPermissions ),
+        TREATAS ( CurrentApps, AppPermissions[AppId] ),
+        AppPermissions[PermissionType] = "Delegated"
+    )
 ```
 
 ```DAX
 Owners =
-CALCULATE (
-    CONCATENATEX ( VALUES ( AppOwners[OwnerName] ), AppOwners[OwnerName], "; ", AppOwners[OwnerName], ASC ),
-    REMOVEFILTERS ( AppOwners )
-)
+VAR CurrentApps = VALUES ( Apps[AppId] )
+RETURN
+    CALCULATE (
+        CONCATENATEX ( VALUES ( AppOwners[OwnerName] ), AppOwners[OwnerName], "; ", AppOwners[OwnerName], ASC ),
+        REMOVEFILTERS ( AppOwners ),
+        TREATAS ( CurrentApps, AppOwners[AppId] )
+    )
 ```
 
 ```DAX
 Oldest Active Secret (days) =
-VAR firstStart =
+VAR CurrentApps = VALUES ( Apps[AppId] )
+VAR FirstStart =
     CALCULATE (
         MIN ( AppCredentials[StartDate] ),
         REMOVEFILTERS ( AppCredentials ),
+        TREATAS ( CurrentApps, AppCredentials[AppId] ),
         AppCredentials[CredentialType] = "ClientSecret",
         AppCredentials[EndDate] >= TODAY ()
     )
-RETURN IF ( NOT ISBLANK ( firstStart ), INT ( TODAY () - firstStart ) )
+RETURN IF ( NOT ISBLANK ( FirstStart ), INT ( TODAY () - FirstStart ) )
 ```
 
 ```DAX
 Next Credential Expiry =
-CALCULATE (
-    MIN ( AppCredentials[EndDate] ),
-    REMOVEFILTERS ( AppCredentials ),
-    AppCredentials[CredentialType] IN { "ClientSecret", "Certificate" },
-    AppCredentials[EndDate] >= TODAY ()
-)
+VAR CurrentApps = VALUES ( Apps[AppId] )
+RETURN
+    CALCULATE (
+        MIN ( AppCredentials[EndDate] ),
+        REMOVEFILTERS ( AppCredentials ),
+        TREATAS ( CurrentApps, AppCredentials[AppId] ),
+        AppCredentials[CredentialType] IN { "ClientSecret", "Certificate" },
+        AppCredentials[EndDate] >= TODAY ()
+    )
 ```
 
 ```DAX
@@ -344,4 +360,6 @@ For local or OneDrive-synced files, scheduled refresh in the Service needs an on
 | `LastSignIn` is empty for every app | The export had no sign-in data (needs Entra ID P1/P2 and `AuditLog.Read.All`). `Sign-in Status` then shows "No sign-in recorded" for all apps. |
 | A measure's formula is underlined in red at `Apps[...]` | The measure has the same name as the `Apps` table. Rename it to `App Count` and update the measures that refer to it. |
 | *"Can't display this visual"* with `ConditionNotHierarchicallyRelated` | Fields from different tables were put in one slicer (or one visual's axis). Use one field per slicer. |
+| `Owners`, `Application Permissions` or another per-app measure shows the same (full) list in every row | The measure uses `REMOVEFILTERS ( <child table> )` without `TREATAS`, which also removes the row's app. Use the versions in step 6. |
+| The table's Total row shows a long combined list | Turn totals off: select the table → **Format visual → Visual → Totals → Off**. |
 | Ages or expiry status look a day out of date | Calculated columns update on refresh. Refresh the report. |
