@@ -263,6 +263,23 @@ VAR d = MAX ( Apps[LastSignIn] )
 RETURN IF ( NOT ISBLANK ( d ), INT ( TODAY () - d ) )
 ```
 
+### For the App Lookup page
+
+```DAX
+Selected App =
+IF (
+    HASONEVALUE ( Apps[AppId] ),
+    SELECTEDVALUE ( Apps[AppName] ),
+    "Select an app from the list above"
+)
+```
+
+```DAX
+App Selected = IF ( ISFILTERED ( Apps[AppName] ), 1, 0 )
+```
+
+`App Selected` is used as a visual filter (**is 1**) so the App Lookup tables stay empty until someone picks an app.
+
 ---
 
 ## 7. Report pages
@@ -274,6 +291,29 @@ In the Filters pane, under **Filters on all pages**, add `Apps[IsMicrosoftApp]` 
 In this step, **"Table" means a Table visual** (Visualizations → Table icon) placed on the page, not a new data table. No new data tables are needed.
 
 Each **slicer takes one field**. Putting several fields into one slicer makes Power BI try to build a hierarchy from them, which fails with *"Can't display this visual … ConditionNotHierarchicallyRelated"*. Make one slicer, then copy it (Ctrl+C, Ctrl+V) and swap the field.
+
+### App Lookup page (default view)
+
+The first page readers see: pick an app from a searchable dropdown and see its details, application permissions and owners.
+
+| Visual | Fields and settings |
+|---|---|
+| **Slicer** | `Apps[AppName]`. **Format visual → Slicer settings:** Style **Dropdown**, Selection **Single select**. Slicer **…** menu → **Search** |
+| **Card** (heading) | `Selected App` |
+| **Card** (details) | `Apps[AppId]`, `Apps[AuthMethods]`, `Apps[LastSignIn]`, `Apps[LastAppOnlySignIn]`, `Apps[Enabled]` (choose **First** for text fields; rename each in the well). Visual filter: `App Selected` **is 1** |
+| **Table** visual: application permissions | `AppPermissions[Resource]`, `[Permission]`, `[PermissionDescription]`, `[GrantedDate]`. Visual filters: `AppPermissions[PermissionType]` = **Application**, `App Selected` **is 1** |
+| **Table** visual: owners | `AppOwners[OwnerName]`, `[OwnerUPN]`, `[OwnerOf]`. Visual filter: `App Selected` **is 1** |
+| **Table** visual: credentials (optional) | `AppCredentials[CredentialType]`, `[Name]`, `[EndDate]`, `[Expiry Status]`. Visual filter: `App Selected` **is 1** |
+
+Turn **Totals** off on each table (**Format visual → Visual → Totals → Off**).
+
+**Make it the default view:**
+
+1. Drag the **App Lookup** tab to the far left.
+2. Clear the slicer (eraser icon).
+3. Save while App Lookup is on screen.
+
+The Power BI Service opens the report on the page that was showing when it was saved and published.
 
 ### Page 1: Overview
 
@@ -355,6 +395,19 @@ Change the parameters only: no query needs editing. Go to **Home → Transform d
 4. Parameters can also be changed here, under **Settings → Parameters**, without opening Desktop.
 
 For local or OneDrive-synced files, scheduled refresh in the Service needs an on-premises data gateway. Moving to SharePoint avoids that.
+
+### Share
+
+| Option | When to use |
+|---|---|
+| **Workspace → Create app** | Wider audience. Readers get a clean, read-only view, and you choose which pages they see |
+| **Share** button on the report | A few named people |
+| Workspace **Viewer** role | Colleagues who already use the workspace |
+
+- Publish to a shared workspace, not *My workspace*, if others will use the report.
+- Viewers usually need a **Power BI Pro** licence, unless the workspace is on Premium or Fabric capacity.
+- The report shows which apps hold powerful permissions, which use secrets, and which secrets have expired. Share it only with the people who need it, such as identity, security and app owners.
+- A Power BI *dashboard* (pinned tiles) can't use slicers. To add the App Lookup page to one, open the report in the Service and **pin** the page as a **live page**.
 
 ---
 
