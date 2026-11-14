@@ -1,7 +1,10 @@
 let
-    // Folder that holds the four CSV files - change this to your folder
-    FolderPath = "C:\Path\To\EntraAppReport",
-    Content    = File.Contents(FolderPath & "\AppOwners.csv"),
+    // Accepts the local export name and the pipeline name; if several match, the newest is used
+    FileNames  = {"AppOwners.csv", "EntraApp_Owners.csv"},
+    Matching   = Table.SelectRows(Files, each List.Contains(FileNames, [Name], Comparer.OrdinalIgnoreCase)),
+    Content    = if Table.IsEmpty(Matching)
+                 then error Error.Record("File not found", "None of " & Text.Combine(FileNames, ", ") & " was found in the source folder")
+                 else Table.First(Table.Sort(Matching, {{"Date modified", Order.Descending}}))[Content],
     FirstTwo   = Binary.ToList(Binary.Range(Content, 0, 2)),
     Encoding   = if FirstTwo = {255, 254} then 1200 else 65001,
     Csv        = Csv.Document(Content, [Delimiter = ",", Encoding = Encoding, QuoteStyle = QuoteStyle.Csv]),
