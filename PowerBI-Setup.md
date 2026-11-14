@@ -11,132 +11,33 @@ Step-by-step instructions for building the Power BI report from the four CSV fil
 
 The four files are linked by the `AppId` column.
 
-> **Use [powerbi/README.md](powerbi/README.md) for loading the data.** It replaces steps 1–3 below with parameter-driven queries (local folder or SharePoint, no per-table edits) and covers the load errors found while building the report. Steps 4–7 (model, calculated columns, measures, pages) still apply.
-
-These steps assume the files are in a local or OneDrive folder for now. Moving to SharePoint later only changes one query ([step 8](#8-refreshing-and-switching-to-sharepoint-later)).
+Steps 1–3 load the data. Steps 4–7 build the model and the report pages. Step 8 covers refreshing, switching to SharePoint and publishing.
 
 ---
 
-## 1. Connect to the folder
+## 1–3. Load the data
 
-1. In Power BI Desktop, go to **Get Data → Folder** and select the folder that holds the four CSVs.
-2. In the dialog that lists the files, click **Transform Data**.
-   - **Don't click Combine.** It stacks all four files into one table, which only works when the files have the same columns.
-   - **Don't click Load.** That loads only the list of files, not their contents.
-3. In Power Query, rename the new query to **`Files`** (right-click → Rename).
-4. Right-click `Files` and untick **Enable load**. It is a source for the other queries, not a report table.
+Follow **[powerbi/README.md](powerbi/README.md)**. It has the query files and the step-by-step setup, confirmed working in Power BI Desktop. In short:
 
----
+1. **Start a new Power BI file.** Set **Ignore the Privacy levels** and untick **Autodetect new relationships** (File → Options → Current File).
+2. **Create four parameters** that hold the file location: `SourceType`, `LocalFolderPath`, `SharePointSiteUrl` and `SharePointFolderName`.
+3. **Create `Files`,** which lists the CSVs from that location (Enable load **off**).
+4. **Create `Apps`, `AppPermissions`, `AppCredentials` and `AppOwners`** from the `.pq` files (Enable load **on**).
+5. **Click Close & Apply,** then save.
 
-## 2. Add a function to read one file
-
-Go to **Home → New Source → Blank Query → Advanced Editor**, paste the code below, and rename the query to **`fnReadCsv`**.
-
-```m
-(FileName as text) as table =>
-let
-    Content    = Files{[Name = FileName]}[Content],
-    // UTF-16 files (pipeline version, -Encoding unicode) start with bytes FF FE; anything else is read as UTF-8
-    FirstTwo   = Binary.ToList(Binary.Range(Content, 0, 2)),
-    Encoding   = if FirstTwo = {255, 254} then 1200 else 65001,
-    Csv        = Csv.Document(Content, [Delimiter = ",", Encoding = Encoding, QuoteStyle = QuoteStyle.Csv]),
-    Promoted   = Table.PromoteHeaders(Csv, [PromoteAllScalars = true]),
-    // Remove any stray byte-order mark or spaces from the column names
-    CleanNames = Table.TransformColumnNames(Promoted, each Text.Trim(Text.Replace(_, Character.FromNumber(65279), ""))),
-    // Empty cells -> null, so date and number columns convert cleanly
-    Cleaned    = Table.ReplaceValue(CleanNames, "", null, Replacer.ReplaceValue, Table.ColumnNames(CleanNames))
-in
-    Cleaned
-```
-
-The function detects each file's encoding, so it reads both kinds of export without changes:
-
-| Export | File names | Encoding |
-|---|---|---|
-| Pipeline version of the script | `EntraApp_Apps.csv`, `EntraApp_Permissions.csv`, ... | UTF-16 |
-| Earlier local version of the script | `Apps.csv`, `AppPermissions.csv`, ... | UTF-8 |
-
----
-
-## 3. Create the four tables
-
-Create four more blank queries, one for each table. Give each the name shown, because the DAX in later steps uses these names.
-
-The file names below (`Apps.csv` and so on) match the local export. For the pipeline files in SharePoint, use the names in [step 8](#8-refreshing-and-switching-to-sharepoint-later).
-
-### `Apps`
-```m
-let
-    Source = fnReadCsv("Apps.csv"),
-    Typed  = Table.TransformColumnTypes(Source, {
-        {"AppId", type text}, {"ServicePrincipalId", type text}, {"AppName", type text}, {"AppType", type text},
-        {"IsMicrosoftApp", type logical}, {"RegisteredInTenant", type logical}, {"Publisher", type text},
-        {"Enabled", type logical}, {"AppCreated", type date}, {"AuthMethods", type text},
-        {"HasClientSecret", type logical}, {"ApplicationPermissionCount", Int64.Type},
-        {"DelegatedPermissionCount", Int64.Type}, {"OwnerCount", Int64.Type},
-        {"LastSignIn", type date}, {"LastAppOnlySignIn", type date}, {"SnapshotDate", type date}}, "en-US")
-in
-    Typed
-```
-
-### `AppPermissions`
-```m
-let
-    Source = fnReadCsv("AppPermissions.csv"),
-    Typed  = Table.TransformColumnTypes(Source, {
-        {"AppId", type text}, {"AppName", type text}, {"PermissionType", type text}, {"Resource", type text},
-        {"Permission", type text}, {"PermissionDescription", type text}, {"ConsentType", type text},
-        {"ConsentedUserCount", Int64.Type}, {"GrantedDate", type date}}, "en-US")
-in
-    Typed
-```
-
-### `AppCredentials`
-```m
-let
-    Source = fnReadCsv("AppCredentials.csv"),
-    Typed  = Table.TransformColumnTypes(Source, {
-        {"AppId", type text}, {"AppName", type text}, {"CredentialType", type text}, {"Source", type text},
-        {"Name", type text}, {"KeyId", type text}, {"Hint", type text}, {"Thumbprint", type text},
-        {"Issuer", type text}, {"Subject", type text}, {"StartDate", type date}, {"EndDate", type date},
-        {"Status", type text}}, "en-US")
-in
-    Typed
-```
-
-### `AppOwners`
-```m
-let
-    Source = fnReadCsv("AppOwners.csv"),
-    Typed  = Table.TransformColumnTypes(Source, {
-        {"AppId", type text}, {"AppName", type text}, {"OwnerOf", type text}, {"OwnerName", type text},
-        {"OwnerUPN", type text}, {"OwnerType", type text}, {"OwnerId", type text}}, "en-US")
-in
-    Typed
-```
-
-### Check before applying
-
-Click `Apps` and look at the preview:
-
-| You see | What to do |
-|---|---|
-| Proper column names and readable text | Nothing. Continue. |
-| Garbled text, or everything in one column | The encoding wasn't detected correctly. Check that `fnReadCsv` matches step 2 exactly. |
-| An error in a date or number column | Check what the cell contains in the CSV. The type list may need adjusting for that column. |
-
-Your query list should look like this, with only the last four loading into the report:
+Your query list should then look like this, with only the four tables loading into the report:
 
 ```
-Files           (load disabled)
-fnReadCsv       (function)
+SourceType            (parameter)
+LocalFolderPath       (parameter)
+SharePointSiteUrl     (parameter)
+SharePointFolderName  (parameter)
+Files                 (load disabled)
 Apps
 AppPermissions
 AppCredentials
 AppOwners
 ```
-
-Click **Close & Apply**.
 
 ---
 
@@ -396,30 +297,26 @@ Go to **View → Sync slicers** and sync the Owner and Permission slicers across
 
 ## 8. Refreshing and switching to SharePoint later
 
-### Refresh with new local files
+### Refresh with new files
 
-Overwrite the four CSVs in the same folder, keeping the same names, and click **Refresh**. The `Files` query re-reads the folder each time.
+Overwrite the four CSVs in the same folder and click **Refresh**. The table queries accept both naming styles (`Apps.csv` and `EntraApp_Apps.csv`), and use the newest file if more than one matches.
 
 ### Switch to SharePoint
 
-When the pipeline uploads the files to SharePoint, replace the `Files` query's code with:
+Change the parameters only: no query needs editing. Go to **Home → Transform data → Edit parameters** and set:
 
-```m
-let
-    Source = SharePoint.Files("https://<tenant>.sharepoint.com/sites/<SiteName>", [ApiVersion = 15]),
-    // Only the base folder; the week folders contain files with the same names
-    Files  = Table.SelectRows(Source, each Text.EndsWith([Folder Path], "/<BaseFolderName>/"))
-in
-    Files
-```
+- `SourceType` = `SharePoint`
+- `SharePointSiteUrl` = `https://<tenant>.sharepoint.com/sites/<SiteName>`
+- `SharePointFolderName` = the base folder the pipeline uploads to
 
-The pipeline's upload step (`Export-CSV.ps1 -RemoveBuildID`) only strips the build ID, so in SharePoint the files are named `EntraApp_Apps.csv`, `EntraApp_Permissions.csv`, `EntraApp_Credentials.csv` and `EntraApp_Owners.csv`. Update the file name in each of the four table queries to match.
+`Files` reads only that base folder, not its week subfolders, which contain files with the same names. See [powerbi/README.md](powerbi/README.md#switching-to-sharepoint) for details.
 
 ### Publish and schedule
 
 1. **Home → Publish** to your Power BI workspace.
 2. In the Power BI Service, open the semantic model's **Settings → Data source credentials** and sign in to SharePoint with your organisational account (OAuth2).
 3. Set **Scheduled refresh** for a time after the pipeline's run, for example pipeline at 05:00 and refresh at 06:00.
+4. Parameters can also be changed here, under **Settings → Parameters**, without opening Desktop.
 
 For local or OneDrive-synced files, scheduled refresh in the Service needs an on-premises data gateway. Moving to SharePoint avoids that.
 
@@ -429,9 +326,7 @@ For local or OneDrive-synced files, scheduled refresh in the Service needs an on
 
 | Problem | Likely cause and fix |
 |---|---|
-| `Expression.Error: The key didn't match any rows in the table` | A file name in one of the four queries doesn't match the file in the folder. Check spelling and the `.csv` extension. |
-| `Expression.Error: The column 'AppId' of the table wasn't found` in every table | The header row was read with the wrong encoding, which happened with an earlier version of `fnReadCsv` that assumed UTF-16. Replace `fnReadCsv` with the version in step 2. To check, open a table query and click its **Source** step: the column names should read `AppId`, `AppName` and so on. |
-| Text is garbled or all in one column | Same cause: replace `fnReadCsv` with the version in step 2. |
+| Any error while loading the data (Power Query or Close & Apply) | See the troubleshooting table in [powerbi/README.md](powerbi/README.md#troubleshooting). It covers every load error found while building the report. |
 | A Permission or Owner slicer doesn't filter the app table | That relationship's cross-filter direction isn't **Both** (step 4). |
 | Two apps appear as one row | `Apps[AppId]` is missing from the table visual. |
 | `LastSignIn` is empty for every app | The export had no sign-in data (needs Entra ID P1/P2 and `AuditLog.Read.All`). `Sign-in Status` then shows "No sign-in recorded" for all apps. |
