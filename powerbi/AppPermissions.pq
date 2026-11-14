@@ -6,8 +6,12 @@ let
                  then error Error.Record("File not found", "None of " & Text.Combine(FileNames, ", ") & " was found in the source folder")
                  else Table.First(Table.Sort(Matching, {{"Date modified", Order.Descending}}))[Content],
     FirstTwo   = Binary.ToList(Binary.Range(Content, 0, 2)),
-    Encoding   = if FirstTwo = {255, 254} then 1200 else 65001,
-    Csv        = Csv.Document(Content, [Delimiter = ",", Encoding = Encoding, QuoteStyle = QuoteStyle.Csv]),
+    // UTF-16 (pipeline export) starts with bytes FF FE; anything else is UTF-8 (local export).
+    // Encoding must be a literal number in each Csv.Document call: Power BI fails to load the
+    // query ("Input string was not in a correct format") if it is a variable.
+    Csv        = if FirstTwo = {255, 254}
+                 then Csv.Document(Content, [Delimiter = ",", Encoding = 1200, QuoteStyle = QuoteStyle.Csv])
+                 else Csv.Document(Content, [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
     Promoted   = Table.PromoteHeaders(Csv, [PromoteAllScalars = true]),
     CleanNames = Table.TransformColumnNames(Promoted, each Text.Trim(Text.Replace(_, Character.FromNumber(65279), ""))),
     Cleaned    = Table.ReplaceValue(CleanNames, "", null, Replacer.ReplaceValue, Table.ColumnNames(CleanNames)),
