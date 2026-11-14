@@ -252,7 +252,7 @@ In the Filters pane, under **Filters on all pages**, add `Apps[IsMicrosoftApp]` 
 | Visual | Fields |
 |---|---|
 | 6 cards | `App Count`, `Apps with Client Secret`, `Apps without Owner`, `Secrets Older Than 1 Year`, `Credentials Expiring in 30 Days`, `Expired Credentials` |
-| Bar chart: auth methods | Y: `AppCredentials[CredentialType]`, X: `App Count` |
+| Bar chart: auth methods | Y: `AppCredentials[CredentialType]`, X: `App Count`. Visual filter: `AppCredentials[Expiry Status]` = everything except `1 - Expired`, so only credentials still in use are counted |
 | Bar chart: top permissions | Y: `AppPermissions[Permission]`, X: `App Count`. Visual filters: `PermissionType = Application`, and Top N = 15 by `App Count` |
 | Bar chart: credential expiry | Y: `AppCredentials[Expiry Status]`, X: count of `AppCredentials[KeyId]` |
 | Donut: sign-in activity | Legend: `Apps[Sign-in Status]`, Values: `App Count` |
