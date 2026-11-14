@@ -71,7 +71,7 @@ All four files share the `AppId` column.
 - `OwnerOf` is `AppRegistration` or `EnterpriseApp`.
 - Apps without owners get a single `(No owner)` row, so you can select them in a slicer.
 
-Dates are written as `yyyy-MM-dd`. Files are UTF-16 (`-Encoding unicode`), the same as the MFA report; Power BI reads them without changes.
+Dates are written as `yyyy-MM-dd`. Files are UTF-16 (`-Encoding unicode`), the same as the MFA report. The Power BI loader in [PowerBI-Setup.md](PowerBI-Setup.md) detects the encoding, so it also reads UTF-8 files from earlier versions of the script.
 
 ## Power BI setup
 
