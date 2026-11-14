@@ -118,6 +118,14 @@ RETURN
 
 The number prefixes make these values sort in a sensible order in charts and slicers.
 
+### Stop Power BI summing number columns
+
+Power BI adds up number columns by default ("Sum of …"). A Table visual then **hides every row where those sums are blank**, which hides application permissions, `(No permissions)` rows, federated credentials and managed identities. For each of these columns, select it in the Data pane and set **Column tools → Summarization → Don't summarize**:
+
+- `AppPermissions[ConsentedUserCount]`
+- `AppCredentials[Age (days)]`
+- `AppCredentials[Days to Expiry]`
+
 Calculated columns that use `TODAY()` are worked out at **refresh time**, so refresh after loading new files. The measures in the next step are always current.
 
 ---
@@ -362,4 +370,5 @@ For local or OneDrive-synced files, scheduled refresh in the Service needs an on
 | *"Can't display this visual"* with `ConditionNotHierarchicallyRelated` | Fields from different tables were put in one slicer (or one visual's axis). Use one field per slicer. |
 | `Owners`, `Application Permissions` or another per-app measure shows the same (full) list in every row | The measure uses `REMOVEFILTERS ( <child table> )` without `TREATAS`, which also removes the row's app. Use the versions in step 6. |
 | The table's Total row shows a long combined list | Turn totals off: select the table → **Format visual → Visual → Totals → Off**. |
+| A table on the App Detail page (or any Table visual) is empty or missing rows, and its headings say "Sum of …" | The table hides rows where the summed values are blank. Set **Summarization → Don't summarize** for `ConsentedUserCount`, `Age (days)` and `Days to Expiry` (step 5). |
 | Ages or expiry status look a day out of date | Calculated columns update on refresh. Refresh the report. |
