@@ -247,6 +247,10 @@ RETURN IF ( NOT ISBLANK ( d ), INT ( TODAY () - d ) )
 
 In the Filters pane, under **Filters on all pages**, add `Apps[IsMicrosoftApp]` and select **False**. This hides Microsoft's built-in apps everywhere. Clear it when you want to include them.
 
+In this step, **"Table" means a Table visual** (Visualizations → Table icon) placed on the page, not a new data table. No new data tables are needed.
+
+Each **slicer takes one field**. Putting several fields into one slicer makes Power BI try to build a hierarchy from them, which fails with *"Can't display this visual … ConditionNotHierarchicallyRelated"*. Make one slicer, then copy it (Ctrl+C, Ctrl+V) and swap the field.
+
 ### Page 1: Overview
 
 | Visual | Fields |
@@ -261,8 +265,8 @@ In the Filters pane, under **Filters on all pages**, add `Apps[IsMicrosoftApp]` 
 
 | Visual | Fields |
 |---|---|
-| Slicers (dropdown, with **search** turned on) | `AppPermissions[Permission]`, `AppPermissions[PermissionType]`, `AppPermissions[Resource]`, `AppOwners[OwnerName]`, `AppCredentials[CredentialType]`, `Apps[HasClientSecret]`, `Apps[Sign-in Status]` |
-| Table | `Apps[AppName]`, `Apps[AppId]`, `Apps[AuthMethods]`, `Owners`, `Application Permissions`, `Delegated Permissions`, `Oldest Active Secret (days)`, `Next Credential Expiry`, `Apps[LastSignIn]` |
+| 7 **Slicer** visuals, **one field each** (dropdown, with **search** turned on) | `AppPermissions[Permission]`, `AppPermissions[PermissionType]`, `AppPermissions[Resource]`, `AppOwners[OwnerName]`, `AppCredentials[CredentialType]`, `Apps[HasClientSecret]`, `Apps[Sign-in Status]` |
+| 1 **Table** visual, all fields in its **Columns** well | `Apps[AppName]`, `Apps[AppId]`, `Apps[AuthMethods]`, `Owners`, `Application Permissions`, `Delegated Permissions`, `Oldest Active Secret (days)`, `Next Credential Expiry`, `Apps[LastSignIn]` |
 
 - **Keep `AppId` in the table.** Without it, two apps with the same name merge into one row. You can make the column narrow.
 - **Conditional formatting** (column → Conditional formatting → Background colour → Rules):
@@ -274,8 +278,8 @@ In the Filters pane, under **Filters on all pages**, add `Apps[IsMicrosoftApp]` 
 
 | Visual | Fields |
 |---|---|
-| Slicers | `AppCredentials[CredentialType]`, `AppCredentials[Source]`, `AppCredentials[Expiry Status]` |
-| Table | `Apps[AppName]`, `AppCredentials[CredentialType]`, `AppCredentials[Source]`, `AppCredentials[Name]`, `AppCredentials[StartDate]`, `AppCredentials[EndDate]`, `AppCredentials[Age (days)]`, `AppCredentials[Days to Expiry]`, `AppCredentials[Expiry Status]` |
+| 3 **Slicer** visuals, **one field each** | `AppCredentials[CredentialType]`, `AppCredentials[Source]`, `AppCredentials[Expiry Status]` |
+| 1 **Table** visual | `Apps[AppName]`, `AppCredentials[CredentialType]`, `AppCredentials[Source]`, `AppCredentials[Name]`, `AppCredentials[StartDate]`, `AppCredentials[EndDate]`, `AppCredentials[Age (days)]`, `AppCredentials[Days to Expiry]`, `AppCredentials[Expiry Status]` |
 
 Sort by `Days to Expiry` ascending to see the most urgent credentials first. `Source = EnterpriseApp` shows the secrets that don't appear in the App registrations blade.
 
@@ -284,7 +288,7 @@ Sort by `Days to Expiry` ascending to see the most urgent credentials first. `So
 | Visual | Fields |
 |---|---|
 | Bar chart: apps per owner | Y: `AppOwners[OwnerName]`, X: `App Count`, sorted descending |
-| Table | `AppOwners[OwnerName]`, `AppOwners[OwnerUPN]`, `AppOwners[OwnerOf]`, `Apps[AppName]`, `Apps[AuthMethods]` |
+| 1 **Table** visual | `AppOwners[OwnerName]`, `AppOwners[OwnerUPN]`, `AppOwners[OwnerOf]`, `Apps[AppName]`, `Apps[AuthMethods]` |
 
 ### Page 5: App Detail (drill-through)
 
@@ -339,4 +343,5 @@ For local or OneDrive-synced files, scheduled refresh in the Service needs an on
 | Two apps appear as one row | `Apps[AppId]` is missing from the table visual. |
 | `LastSignIn` is empty for every app | The export had no sign-in data (needs Entra ID P1/P2 and `AuditLog.Read.All`). `Sign-in Status` then shows "No sign-in recorded" for all apps. |
 | A measure's formula is underlined in red at `Apps[...]` | The measure has the same name as the `Apps` table. Rename it to `App Count` and update the measures that refer to it. |
+| *"Can't display this visual"* with `ConditionNotHierarchicallyRelated` | Fields from different tables were put in one slicer (or one visual's axis). Use one field per slicer. |
 | Ages or expiry status look a day out of date | Calculated columns update on refresh. Refresh the report. |
