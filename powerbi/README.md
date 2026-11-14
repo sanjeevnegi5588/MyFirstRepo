@@ -2,7 +2,7 @@
 
 These steps load the four CSV files from `Export-EntraAppReport.ps1` into Power BI Desktop. The file location is kept in **parameters**, so switching from a local folder to SharePoint later only means changing parameter values. No query needs editing.
 
-This replaces steps 1–3 of [PowerBI-Setup.md](../PowerBI-Setup.md). After the tables load, continue with step 4 (data model) in that guide.
+These are steps 1–3 of [PowerBI-Setup.md](../PowerBI-Setup.md). After the tables load, continue with step 4 (data model) in that guide.
 
 ## Files in this folder
 
